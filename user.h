@@ -3,11 +3,13 @@
 #include <vector>
 #include <string>
 #include "storage.h"
-#include "myError.h"
+#include "utils.h"
 
+extern bool TEST;
 
 
 class LoginStatus {
+public:
   struct User {
     int privilege;
     std::string username;
@@ -16,12 +18,9 @@ class LoginStatus {
     int selected=0;
 
   };
-  template <typename T>
-  friend int size();
-  template <typename T>
-  friend void read(T& value, std::fstream& in);
-  template <typename T>
-  friend void write(const T& value, std::fstream& out);
+  friend int size<User>();
+  friend void read<User>(User& value, std::fstream& in);
+  friend void write<User>(const User& value, std::fstream& out);
 
   std::vector<User> login_stack;
   BlockList<unsigned long long,User> user_data;
@@ -29,7 +28,7 @@ class LoginStatus {
 
 public:
   LoginStatus() {
-    if(user_data.initialise("user_data.dat")) {
+    if(user_data.initialise("user_data.dat",TEST)) {
       User root={7,"root","root",hash("sjtu")};
       user_data.insert({hash("root"),root});
     }
@@ -39,7 +38,7 @@ public:
 
   void su(const std::string &user_id,const std::string& password="") {
     auto tmp=user_data.find(hash(user_id));
-    if(tmp) {
+    if(!tmp) {
       throw invalid_command();
     }
     User tmp_user = tmp->second;
@@ -82,14 +81,15 @@ public:
     if(!tmp) {
       throw invalid_command();
     }
+    User tmp_user=tmp->second;
     if(passwd=="") {
       if(get_privilege()!=7) {
         throw invalid_command();
       }
-    }
-    User tmp_user=tmp->second;
-    if(hash(passwd)!=tmp_user.password) {
-      throw invalid_command();
+    } else {
+      if(hash(passwd)!=tmp_user.password) {
+        throw invalid_command();
+      }
     }
     user_data.erase(hash(tmp_user.user_id));
     tmp_user.password=hash(new_passwd);
@@ -129,6 +129,11 @@ public:
 
 };
 
+template<>
+int size<LoginStatus::User>() {
+  return 140;
+}
+
 template <>
 void write(const LoginStatus::User& value, std::fstream& out) {
   write(value.privilege, out);
@@ -144,8 +149,5 @@ void read(LoginStatus::User& value, std::fstream& in) {
   read(value.user_id, in);
   read(value.password, in);
 }
-template <>
-int size<LoginStatus::User>() {
-  return 140;
-}
+
 #endif //USER_H

@@ -9,23 +9,24 @@
 #include <vector>
 #include <exception>
 #include <optional>
+#include <typeinfo>
 
 
-using std::string;
-using std::fstream;
-using std::ifstream;
-using std::ofstream;
+extern bool TEST;
 
 template <typename T>
 void write(const T& value, std::fstream& out);
 
 template <typename T>
 void write(const T& value, std::fstream& out) {
+  if(std::is_class<T>::value){
+    std::cerr<<"WARNING:USING DEFAULT SIZE FOR "<<typeid(T).name()<<"" << std::endl;
+  }
   out.write(reinterpret_cast<const char*>(&value), sizeof(T));
 };
 
 template <>
-void write(const string& value, std::fstream& out) {
+void write(const std::string& value, std::fstream& out) {
   int l=value.length();
   if(l>64) {
     throw std::overflow_error("string size exceed limit");
@@ -41,11 +42,14 @@ void read(T& value, std::fstream& in);
 
 template <typename T>
 void read(T& value, std::fstream& in) {
+if(std::is_class<T>::value){
+    std::cerr<<"WARNING:USING DEFAULT SIZE FOR "<<typeid(T).name()<<"" << std::endl;
+  }
   in.read(reinterpret_cast<char*>(&value), sizeof(T));
 };
 
 template<>
-void read(string& value, std::fstream& in) {
+void read(std::string& value, std::fstream& in) {
   value.resize(64);
   in.read(&value[0], 64);
   value.erase(value.find('\0'), std::string::npos);
@@ -53,6 +57,9 @@ void read(string& value, std::fstream& in) {
 
 template <typename T>
 int size() {
+  if(std::is_class<T>::value){
+    std::cerr<<"WARNING:USING DEFAULT SIZE FOR "<<typeid(T).name()<<"" << std::endl;
+  }
   return sizeof(T);
 };
 template<>
@@ -61,7 +68,7 @@ int size<std::string>() {
 }
 
 
-unsigned long long hash(const std::string& s) {
+constexpr unsigned long long hash(const std::string &s) {
   unsigned long long hash = 0;
   for (char c: s) {
     hash += c;
@@ -91,16 +98,16 @@ bool cmp(const std::pair<Key,Value>& lhs, const std::pair<Key,Value>& rhs) {
 template<class Key, class Value>
 class BlockList {
 private:
-  fstream index_file;
-  fstream file;
-  string file_name;
-  string index_name;
+  std::fstream index_file;
+  std::fstream file;
+  std::string file_name;
+  std::string index_name;
   int back=0;
-  const int sizeofKey = size<Key>();
-  const int sizeofValue = size<Value>();
-  const int sizeofT = sizeofKey + sizeofValue;
+  int sizeofKey;
+  int sizeofValue;
+  int sizeofT;
   const int BLOCKSIZE = 4096;
-  const int BLOCKCAP = 4096 / sizeofT - 1;
+  int BLOCKCAP;
 
 
   //我把block包装成一个Vector
@@ -391,7 +398,13 @@ private:
   }
 
 public:
-  bool initialise(string FN = "",bool clear=false) {
+  bool initialise(std::string FN = "",bool clear=false) {
+
+    sizeofKey = size<Key>();
+    sizeofValue = size<Value>();
+    sizeofT = sizeofKey + sizeofValue;
+    BLOCKCAP=4096/sizeofT-1;
+
     bool return_val=false;
     Block::father = this;
     if (FN != "") file_name = FN;
