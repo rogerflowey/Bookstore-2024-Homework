@@ -1,3 +1,5 @@
 requirements.md
 /document/.obsidian/
 .*
+/PreHomework/
+/cmake-build-debug/
