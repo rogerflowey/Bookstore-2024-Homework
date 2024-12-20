@@ -3,14 +3,14 @@
 #include "book_data.h"
 #include "log.h"
 
+
 bool TEST=true;
 
 int main() {
 
 
-
   LoginStatus login_status;
-
+  exit(0);
   while (true) {
     try {
       std::string line;

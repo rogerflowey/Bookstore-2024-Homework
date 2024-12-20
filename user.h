@@ -9,8 +9,9 @@ extern bool TEST;
 
 
 class LoginStatus {
-public:
+private:
   struct User {
+    friend IOType<User>;
     int privilege;
     std::string username;
     std::string user_id;
@@ -18,9 +19,7 @@ public:
     int selected=0;
 
   };
-  friend int size<User>();
-  friend void read<User>(User& value, std::fstream& in);
-  friend void write<User>(const User& value, std::fstream& out);
+  friend IOType<User>;
 
   std::vector<User> login_stack;
   BlockList<unsigned long long,User> user_data;
@@ -130,24 +129,24 @@ public:
 };
 
 template<>
-int size<LoginStatus::User>() {
-  return 140;
-}
+class IOType<LoginStatus::User> {
+public:
+  static int size() {
+    return 140;
+  }
+  static void write(const LoginStatus::User& value, std::fstream& out) {
+    IOType<int>::write(value.privilege, out);
+    IOType<std::string>::write(value.username, out);
+    IOType<std::string>::write(value.user_id, out);
+    IOType<unsigned long long>::write(value.password, out);
+  }
 
-template <>
-void write(const LoginStatus::User& value, std::fstream& out) {
-  write(value.privilege, out);
-  write(value.username, out);
-  write(value.user_id, out);
-  write(value.password, out);
-}
-
-template <>
-void read(LoginStatus::User& value, std::fstream& in) {
-  read(value.privilege, in);
-  read(value.username, in);
-  read(value.user_id, in);
-  read(value.password, in);
-}
+  static void read(LoginStatus::User& value, std::fstream& in) {
+    IOType<int>::read(value.privilege, in);
+    IOType<std::string>::read(value.username, in);
+    IOType<std::string>::read(value.user_id, in);
+    IOType<unsigned long long>::read(value.password, in);
+  }
+};
 
 #endif //USER_H

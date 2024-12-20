@@ -10,63 +10,14 @@
 #include <exception>
 #include <optional>
 #include <typeinfo>
+#include <type_traits>
+#include <utility>
+#include "utils.h"
 
 
 extern bool TEST;
-
-template <typename T>
-void write(const T& value, std::fstream& out);
-
-template <typename T>
-void write(const T& value, std::fstream& out) {
-  if(std::is_class<T>::value){
-    std::cerr<<"WARNING:USING DEFAULT SIZE FOR "<<typeid(T).name()<<"" << std::endl;
-  }
-  out.write(reinterpret_cast<const char*>(&value), sizeof(T));
-};
-
-template <>
-void write(const std::string& value, std::fstream& out) {
-  int l=value.length();
-  if(l>64) {
-    throw std::overflow_error("string size exceed limit");
-  }
-  out.write(value.c_str(), l);
-  if (l < 64) {
-    out.write("\0", 64 - l);
-  }
-};
-
-template <typename T>
-void read(T& value, std::fstream& in);
-
-template <typename T>
-void read(T& value, std::fstream& in) {
-if(std::is_class<T>::value){
-    std::cerr<<"WARNING:USING DEFAULT SIZE FOR "<<typeid(T).name()<<"" << std::endl;
-  }
-  in.read(reinterpret_cast<char*>(&value), sizeof(T));
-};
-
-template<>
-void read(std::string& value, std::fstream& in) {
-  value.resize(64);
-  in.read(&value[0], 64);
-  value.erase(value.find('\0'), std::string::npos);
-};
-
-template <typename T>
-int size() {
-  if(std::is_class<T>::value){
-    std::cerr<<"WARNING:USING DEFAULT SIZE FOR "<<typeid(T).name()<<"" << std::endl;
-  }
-  return sizeof(T);
-};
-template<>
-int size<std::string>() {
-  return 64;
-}
-
+template<typename Key, typename Value>
+class MultiBlockList;
 
 constexpr unsigned long long hash(const std::string &s) {
   unsigned long long hash = 0;
@@ -74,51 +25,52 @@ constexpr unsigned long long hash(const std::string &s) {
     hash += c;
     hash = (hash * 37);
   }
-  if(hash==0) {//0被用作空值代表已删除
-    hash=114514;
+  if (hash == 0) {
+    //0被用作空值代表已删除
+    hash = 114514;
   }
   return hash;
 }
+
 template<class Key, class Value>
-std::vector<std::pair<Key, Value>> strip(std::vector<std::pair<Key, Value>> &v) {
-  std::vector<std::pair<Key, Value>> temp(v.size());
-  for(auto &p:v) {
-    if(p.first!=0) {
+std::vector<std::pair<Key, Value> > strip(std::vector<std::pair<Key, Value> > &v) {
+  std::vector<std::pair<Key, Value> > temp(v.size());
+  for (auto &p: v) {
+    if (p.first != 0) {
       temp.push_back(p);
     }
   }
-  v=std::move(temp);
+  v = std::move(temp);
   return v;
 }
+
 template<class Key, class Value>
-bool cmp(const std::pair<Key,Value>& lhs, const std::pair<Key,Value>& rhs) {
+bool cmp(const std::pair<Key, Value> &lhs, const std::pair<Key, Value> &rhs) {
   return lhs.first < rhs.first;
 }
 
 template<class Key, class Value>
 class BlockList {
-private:
+protected:
   std::fstream index_file;
   std::fstream file;
   std::string file_name;
   std::string index_name;
-  int back=0;
-  int sizeofKey;
-  int sizeofValue;
-  int sizeofT;
+  int back = 0;
+  const int sizeofKey;
+  const int sizeofValue;
+  const int sizeofT;
   const int BLOCKSIZE = 4096;
-  int BLOCKCAP;
+  const int BLOCKCAP;
 
-
-  //我把block包装成一个Vector
+  const Key ZERO_KEY;
+  const Key START_KEY;
+  //把block包装成一个Vector
   //TODO:用有序方案？
   struct Block {
-    friend BlockList;
-
-  private:
-    int begin_loc=114514;
+    int begin_loc = 114514;
     int size = 114514;
-    int delete_cnt=114514;
+    int delete_cnt = 114514;
     Key start;
     static BlockList *father;
 
@@ -129,8 +81,8 @@ private:
     void push_back(std::pair<Key, Value> data) {
       father->file.seekp(begin_loc + size * father->sizeofT, std::ios::beg);
       auto [tmp_key,tmp_value] = data;
-      write(tmp_key,father->file);
-      write(tmp_value,father->file);
+      write(tmp_key, father->file);
+      write(tmp_value, father->file);
       ++size;
       if (size >= father->BLOCKCAP) {
         throw std::overflow_error("Block capacity exceeded");
@@ -167,8 +119,8 @@ private:
       father->file.seekg(begin_loc + n * father->sizeofT, std::ios::beg);
       Key tmp_key;
       Value tmp_value;
-      read(tmp_key,father->file);
-      read(tmp_value,father->file);
+      read(tmp_key, father->file);
+      read(tmp_value, father->file);
       return {tmp_key, tmp_value};
     }
 
@@ -179,8 +131,8 @@ private:
       }
       father->file.seekp(begin_loc + n * father->sizeofT, std::ios::beg);
       auto [tmp_key,tmp_value] = data;
-      write(tmp_key,father->file);
-      write(tmp_value,father->file);
+      write(tmp_key, father->file);
+      write(tmp_value, father->file);
     }
 
     void erase(int n) {
@@ -189,19 +141,19 @@ private:
           "Index " + std::to_string(n) + " is out of range, maximum size is " + std::to_string(size));
       }
       father->file.seekp(begin_loc + n * father->sizeofT, std::ios::beg);
-      write(Key(0),father->file);
+      write(father->ZERO_KEY, father->file);
     }
 
-    std::vector<std::pair<Key, Value> > read_block(bool strip=true) {
-      std::vector<std::pair<Key, Value> > temp;
+    std::vector<std::pair<Key, Value>> read_block(bool strip = true) {
+      std::vector<std::pair<Key, Value>> temp;
       temp.reserve(size);
       father->file.seekg(begin_loc, std::ios::beg);
       Key tmp_key;
       Value tmp_value;
       for (int i = 0; i < size; ++i) {
-        read(tmp_key,father->file);
-        read(tmp_value,father->file);
-        if(!(!tmp_key && strip)) {
+        read(tmp_key, father->file);
+        read(tmp_value, father->file);
+        if (!(tmp_key == father->ZERO_KEY && strip)) {
           temp.push_back({tmp_key, tmp_value});
         }
       }
@@ -209,35 +161,33 @@ private:
     }
 
 
-
     //write_block会自动更新index
-    void write_block(std::vector<std::pair<Key, Value>> data) {
-
+    void write_block(std::vector<std::pair<Key, Value> > data) {
       if (data.size() > father->BLOCKCAP) {
         throw std::length_error("Data size exceeds the block capacity of " + std::to_string(father->BLOCKCAP));
       }
       size = data.size();
-      if(data.size()==0) {
+      if (data.size() == 0) {
         throw std::runtime_error("writing no data");
       }
-      Key tmp=data.back().first;
-      for(auto it=data.begin();it!=data.end();++it) {
-        if(it->first<tmp) {
-          tmp=it->first;
+      Key tmp = data.back().first;
+      for (auto it = data.begin(); it != data.end(); ++it) {
+        if (it->first < tmp) {
+          tmp = it->first;
         }
       }
-      if(tmp==0) {
+      if (tmp == father->ZERO_KEY) {
         throw std::runtime_error("Deleted value not cleared");
       }
-      if(start!=1) {
-        start=tmp;
+      if (start != father->START_KEY) {
+        start = tmp;
       }
-      delete_cnt=0;
-      father->index.insert({start,*this});
+      delete_cnt = 0;
+      father->index.insert({start, *this});
       father->file.seekp(begin_loc, std::ios::beg);
       for (auto &[tmp_key,tmp_value]: data) {
-        write(tmp_key,father->file);
-        write(tmp_value,father->file);
+        write(tmp_key, father->file);
+        write(tmp_value, father->file);
       }
     }
 
@@ -269,35 +219,35 @@ private:
 
     int find(Key target) {
       std::vector<std::pair<Key, Value> > block_data = read_block(false);
-      auto it=block_data.begin();
-      for(;it!=block_data.end();++it) {
-        if(it->first==target) {
+      auto it = block_data.begin();
+      for (; it != block_data.end(); ++it) {
+        if (it->first == target) {
           break;
         }
       }
-      if(it==block_data.end()) {
+      if (it == block_data.end()) {
         return -1;
       }
-      return std::distance(block_data.begin(),it);
+      return std::distance(block_data.begin(), it);
     }
 
     void delete_block() {
       father->index.erase(start);
-      size=0;
-      start=0;
-      delete_cnt=0;
+      size = 0;
+      start = father->ZERO_KEY;
+      delete_cnt = 0;
       father->empty_block.push_back(*this);
     }
   };
-  std::map<Key,Block> index;
+
+  std::map<Key, Block> index;
   std::vector<Block> empty_block;
 
-
-private:
+protected:
   void init_index(bool clear) {
-    index_name = ".index_"+file_name;
+    index_name = ".index_" + file_name;
     index_file.open(index_name, std::ios::in | std::ios::out | std::ios::binary);
-    size_t index_size=0;
+    size_t index_size = 0;
     if (!index_file || clear) {
       index_file.clear();
       index_file.open(index_name, std::ios::out | std::ios::binary);
@@ -308,41 +258,39 @@ private:
       b.begin_loc = 0;
       b.size = 0;
       back = BLOCKSIZE;
-      b.start = 1;
+      b.start = START_KEY;
       b.delete_cnt = 0;
       index.insert({b.start, b});
-
-    }else {
-      index_file.seekg(0,std::ios::beg);
+    } else {
+      index_file.seekg(0, std::ios::beg);
       index_file.read(reinterpret_cast<char *>(&index_size), sizeof(size_t));
       if (index_file.fail()) {
         throw std::runtime_error("read file failed, please clear all previous ones");
       }
       for (int i = 0; i < index_size; ++i) {
-        int begin_loc, size , delete_cnt;
+        int begin_loc, size, delete_cnt;
         Key start_key;
         index_file.read(reinterpret_cast<char *>(&(begin_loc)), sizeof(int));
         index_file.read(reinterpret_cast<char *>(&(size)), sizeof(int));
         index_file.read(reinterpret_cast<char *>(&(delete_cnt)), sizeof(int));
-        read(start_key,index_file);
-        back=std::max(back,begin_loc+BLOCKSIZE);
+        read(start_key, index_file);
+        back = std::max(back, begin_loc + BLOCKSIZE);
         Block b;
-        if(begin_loc>100000000) {
+        if (begin_loc > 100000000) {
           throw std::runtime_error("Data corrupted");
         }
-        b.begin_loc=begin_loc;
-        b.size=size;
-        b.start=start_key;
-        b.delete_cnt=delete_cnt;
-        if(b.size==0) {
+        b.begin_loc = begin_loc;
+        b.size = size;
+        b.start = start_key;
+        b.delete_cnt = delete_cnt;
+        if (b.size == 0) {
           empty_block.push_back(b);
         } else {
-          index.insert({b.start,b});
+          index.insert({b.start, b});
         }
       }
     }
   }
-
 
 
   Block &find_block(Key target) {
@@ -353,65 +301,62 @@ private:
     return it->second;
   }
 
-  Block& new_block(std::vector<std::pair<Key,Value>> data) {
+  Block &new_block(std::vector<std::pair<Key, Value> > data) {
     Block temp;
-    if(!empty_block.empty()) {
-      temp=empty_block.back();
+    if (!empty_block.empty()) {
+      temp = empty_block.back();
       empty_block.pop_back();
     } else {
-      if(back>100000000) {
+      if (back > 100000000) {
         throw std::runtime_error("Data corrupted");
       }
       temp.begin_loc = back;
-      back+=BLOCKSIZE;
-      temp.start=0;
+      back += BLOCKSIZE;
+      temp.start = ZERO_KEY;
     }
     temp.size = 0;
-    temp.delete_cnt=0;
+    temp.delete_cnt = 0;
     temp.write_block(data);
     return index[temp.start];
   }
 
 
-
   void spilt(Block &temp_block) {
-    std::vector<std::pair<Key, Value> > tmp_v=temp_block.read_block();
-    std::sort(tmp_v.begin(), tmp_v.end(),cmp<Key,Value>);
+    std::vector<std::pair<Key, Value> > tmp_v = temp_block.read_block();
+    std::sort(tmp_v.begin(), tmp_v.end(), cmp<Key, Value>);
     int mid = tmp_v.size() / 2;
-    std::vector<std::pair<Key, Value>> first_half(tmp_v.begin(), tmp_v.begin() + mid);
-    std::vector<std::pair<Key, Value>> second_half(tmp_v.begin() + mid, tmp_v.end());
+    std::vector<std::pair<Key, Value> > first_half(tmp_v.begin(), tmp_v.begin() + mid);
+    std::vector<std::pair<Key, Value> > second_half(tmp_v.begin() + mid, tmp_v.end());
     temp_block.write_block(first_half);
-    Block new_block=this->new_block(second_half);
+    Block new_block = this->new_block(second_half);
   }
 
   void merge(Block &temp_block) {
-    auto next=index.upper_bound(temp_block.start);
-    if(next==index.end()) {
+    auto next = index.upper_bound(temp_block.start);
+    if (next == index.end()) {
       return;
     }
-    Block& next_block=next->second;
-    auto first_half=temp_block.read_block();
-    auto second_half=next_block.read_block();
-    first_half.insert(first_half.end(),second_half.begin(),second_half.end());
+    Block &next_block = next->second;
+    auto first_half = temp_block.read_block();
+    auto second_half = next_block.read_block();
+    first_half.insert(first_half.end(), second_half.begin(), second_half.end());
     temp_block.write_block(first_half);
     next_block.delete_block();
   }
 
 public:
-  bool initialise(std::string FN = "",bool clear=false) {
+  BlockList(): sizeofKey(size<Key>()), sizeofValue(size<Value>()), sizeofT(sizeofKey + sizeofValue),
+               BLOCKCAP(4096 / sizeofT - 1), ZERO_KEY(ZERO<Key>()), START_KEY(START<Key>()) {
+  };
 
-    sizeofKey = size<Key>();
-    sizeofValue = size<Value>();
-    sizeofT = sizeofKey + sizeofValue;
-    BLOCKCAP=4096/sizeofT-1;
-
-    bool return_val=false;
+  bool initialise(std::string FN = "", bool clear = false) {
+    bool return_val = false;
     Block::father = this;
     if (FN != "") file_name = FN;
     file.open(file_name, std::ios::in | std::ios::out | std::ios::binary);
 
     if (!file || clear) {
-      return_val=true;
+      return_val = true;
       file.clear();
       file.open(file_name, std::ios::out | std::ios::binary);
       file.close();
@@ -421,65 +366,67 @@ public:
     init_index(clear);
     return return_val;
   }
-  void insert(std::pair<Key,Value> target) {
-    Block& temp = find_block(target.first);
+
+  void insert(std::pair<Key, Value> target) {
+    Block &temp = find_block(target.first);
     temp.push_back(target);
-    if(temp.size>=0.8*BLOCKCAP) {
+    if (temp.size >= 0.8 * BLOCKCAP) {
       spilt(temp);
     }
   }
 
   bool erase(Key target) {
-    Block &temp= find_block(target);
+    Block &temp = find_block(target);
     int pos = temp.find(target);
     if (pos == -1) {
       return false;
     }
     temp.erase(pos);
     ++temp.delete_cnt;
-    if(temp.delete_cnt>0.4*BLOCKCAP) {
+    if (temp.delete_cnt > 0.4 * BLOCKCAP) {
       temp.flush();
     }
-    if(temp.size-temp.delete_cnt<0.1*BLOCKCAP) {
+    if (temp.size - temp.delete_cnt < 0.1 * BLOCKCAP) {
       merge(temp);
     }
     return true;
   }
-  std::optional<std::pair<Key, Value>> find(Key key) {
-    std::vector<std::pair<Key,Value>> data = find_block(key).read_block();
-    for(auto i=data.begin();i!=data.end();++i) {
-      if(i->first==key) {
+
+  std::optional<std::pair<Key, Value> > find(Key key) {
+    std::vector<std::pair<Key, Value> > data = find_block(key).read_block();
+    for (auto i = data.begin(); i != data.end(); ++i) {
+      if (i->first == key) {
         return *i;
       }
     }
     return std::nullopt;
   }
+
   ~BlockList() {
-    index_file.seekp(0,std::ios::beg);
-    size_t size = index.size()+empty_block.size();
+    index_file.seekp(0, std::ios::beg);
+    size_t size = index.size() + empty_block.size();
     index_file.write(reinterpret_cast<char *>(&(size)), sizeof(size_t));
     for (auto &b: index) {
-
       auto [begin_loc,size,delete_cnt,start] = b.second;
-      if(begin_loc>100000000) {
+      if (begin_loc > 100000000) {
         throw std::runtime_error("Data corrupted");
       }
-      Key start_key=start;
+      Key start_key = start;
       index_file.write(reinterpret_cast<char *>(&(begin_loc)), sizeof(int));
       index_file.write(reinterpret_cast<char *>(&(size)), sizeof(int));
       index_file.write(reinterpret_cast<char *>(&(delete_cnt)), sizeof(int));
-      write(start_key,index_file);
+      write(start_key, index_file);
     }
-    for(auto &b:empty_block) {
+    for (auto &b: empty_block) {
       auto [begin_loc,size,delete_cnt,start] = b;
-      if(begin_loc>100000000) {
+      if (begin_loc > 100000000) {
         throw std::runtime_error("Data corrupted");
       }
-      Key start_key=start;
+      Key start_key = start;
       index_file.write(reinterpret_cast<char *>(&(begin_loc)), sizeof(int));
       index_file.write(reinterpret_cast<char *>(&(size)), sizeof(int));
       index_file.write(reinterpret_cast<char *>(&(delete_cnt)), sizeof(int));
-      write(start_key,index_file);
+      write(start_key, index_file);
     }
     file.close();
     index_file.close();
@@ -487,7 +434,45 @@ public:
 };
 
 template<class Key, class Value>
-BlockList<Key, Value>* BlockList<Key, Value>::Block::father = nullptr;
+BlockList<Key, Value> *BlockList<Key, Value>::Block::father = nullptr;
+
+
+template<typename Key, typename Value>
+class MultiBlockList : public BlockList<std::pair<Key, Value>, Nothing> {
+public:
+  void insert(std::pair<Key, Value> target) {
+    BlockList<std::pair<Key, Value>, Nothing>::insert({target, NOTHING});
+  }
+
+  bool erase(std::pair<Key, Value> target) {
+    return BlockList<std::pair<Key, Value>, Nothing>::erase(target);
+  }
+
+  std::vector<std::pair<Key, Value> > find(Key key) {
+    std::vector<std::pair<Key, Value> > result;
+    typename BlockList<std::pair<Key, Value>, Nothing>::Block target_copy = BlockList<std::pair<Key, Value>,
+      Nothing>::find_block({key, 0});
+    typename BlockList<std::pair<Key, Value>, Nothing>::Block target = target_copy;
+    while (true) {
+      std::vector<std::pair<std::pair<Key, Value>, Nothing> > data = target.read_block();
+      for (auto i = data.begin(); i != data.end(); ++i) {
+        if (i->first.first == key) {
+          result.push_back(i->first);
+        }
+      }
+      auto it = BlockList<std::pair<Key, Value>, Nothing>::index.upper_bound(target.start);
+      if (it == BlockList<std::pair<Key, Value>, Nothing>::index.end()) {
+        break;
+      }
+      target = it->second;
+      if (target.start.first > key) {
+        break;
+      }
+    }
+    std::sort(result.begin(), result.end());
+    return result;
+  }
+};
 
 
 #endif //STORAGE_H
