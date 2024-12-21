@@ -19,18 +19,6 @@ extern bool TEST;
 template<typename Key, typename Value>
 class MultiBlockList;
 
-constexpr unsigned long long hash(const std::string &s) {
-  unsigned long long hash = 0;
-  for (char c: s) {
-    hash += c;
-    hash = (hash * 37);
-  }
-  if (hash == 0) {
-    //0被用作空值代表已删除
-    hash = 114514;
-  }
-  return hash;
-}
 
 template<class Key, class Value>
 std::vector<std::pair<Key, Value> > strip(std::vector<std::pair<Key, Value> > &v) {
@@ -46,7 +34,7 @@ std::vector<std::pair<Key, Value> > strip(std::vector<std::pair<Key, Value> > &v
 
 template<class Key, class Value>
 bool cmp(const std::pair<Key, Value> &lhs, const std::pair<Key, Value> &rhs) {
-  return lhs.first < rhs.first;
+  return less(lhs.first, rhs.first);
 }
 
 template<class Key, class Value>
@@ -72,7 +60,15 @@ protected:
     int size = 114514;
     int delete_cnt = 114514;
     Key start;
-    static BlockList *father;
+    BlockList *father;
+
+
+    Block() {
+      father = nullptr;
+    };
+
+    explicit Block(BlockList *father): father(father) {
+    };
 
     Key get_start() {
       return start;
@@ -144,8 +140,8 @@ protected:
       write(father->ZERO_KEY, father->file);
     }
 
-    std::vector<std::pair<Key, Value>> read_block(bool strip = true) {
-      std::vector<std::pair<Key, Value>> temp;
+    std::vector<std::pair<Key, Value> > read_block(bool strip = true) {
+      std::vector<std::pair<Key, Value> > temp;
       temp.reserve(size);
       father->file.seekg(begin_loc, std::ios::beg);
       Key tmp_key;
@@ -254,7 +250,7 @@ protected:
       index_file.close();
       index_file.open(index_name, std::ios::in | std::ios::out | std::ios::binary);
 
-      Block b;
+      Block b(this);
       b.begin_loc = 0;
       b.size = 0;
       back = BLOCKSIZE;
@@ -275,7 +271,7 @@ protected:
         index_file.read(reinterpret_cast<char *>(&(delete_cnt)), sizeof(int));
         read(start_key, index_file);
         back = std::max(back, begin_loc + BLOCKSIZE);
-        Block b;
+        Block b(this);
         if (begin_loc > 100000000) {
           throw std::runtime_error("Data corrupted");
         }
@@ -302,7 +298,7 @@ protected:
   }
 
   Block &new_block(std::vector<std::pair<Key, Value> > data) {
-    Block temp;
+    Block temp(this);
     if (!empty_block.empty()) {
       temp = empty_block.back();
       empty_block.pop_back();
@@ -328,7 +324,7 @@ protected:
     std::vector<std::pair<Key, Value> > first_half(tmp_v.begin(), tmp_v.begin() + mid);
     std::vector<std::pair<Key, Value> > second_half(tmp_v.begin() + mid, tmp_v.end());
     temp_block.write_block(first_half);
-    Block new_block = this->new_block(second_half);
+    this->new_block(second_half);
   }
 
   void merge(Block &temp_block) {
@@ -351,7 +347,6 @@ public:
 
   bool initialise(std::string FN = "", bool clear = false) {
     bool return_val = false;
-    Block::father = this;
     if (FN != "") file_name = FN;
     file.open(file_name, std::ios::in | std::ios::out | std::ios::binary);
 
@@ -407,7 +402,7 @@ public:
     size_t size = index.size() + empty_block.size();
     index_file.write(reinterpret_cast<char *>(&(size)), sizeof(size_t));
     for (auto &b: index) {
-      auto [begin_loc,size,delete_cnt,start] = b.second;
+      auto [begin_loc,size,delete_cnt,start,useless] = b.second;
       if (begin_loc > 100000000) {
         throw std::runtime_error("Data corrupted");
       }
@@ -418,7 +413,7 @@ public:
       write(start_key, index_file);
     }
     for (auto &b: empty_block) {
-      auto [begin_loc,size,delete_cnt,start] = b;
+      auto [begin_loc,size,delete_cnt,start,useless] = b;
       if (begin_loc > 100000000) {
         throw std::runtime_error("Data corrupted");
       }
@@ -433,10 +428,6 @@ public:
   }
 };
 
-template<class Key, class Value>
-BlockList<Key, Value> *BlockList<Key, Value>::Block::father = nullptr;
-
-
 template<typename Key, typename Value>
 class MultiBlockList : public BlockList<std::pair<Key, Value>, Nothing> {
 public:
@@ -450,8 +441,7 @@ public:
 
   std::vector<std::pair<Key, Value> > find(Key key) {
     std::vector<std::pair<Key, Value> > result;
-    typename BlockList<std::pair<Key, Value>, Nothing>::Block target_copy = BlockList<std::pair<Key, Value>,
-      Nothing>::find_block({key, 0});
+    typename BlockList<std::pair<Key, Value>, Nothing>::Block target_copy = BlockList<std::pair<Key, Value>,Nothing>::find_block({key, 0});
     typename BlockList<std::pair<Key, Value>, Nothing>::Block target = target_copy;
     while (true) {
       std::vector<std::pair<std::pair<Key, Value>, Nothing> > data = target.read_block();
@@ -471,6 +461,99 @@ public:
     }
     std::sort(result.begin(), result.end());
     return result;
+  }
+};
+
+
+template<class T, int info_len = 1>
+class myVector {
+private:
+  /* your code here */
+  std::fstream file;
+  std::string file_name;
+  int sizeofT;
+  int last;
+
+public:
+  myVector() : sizeofT(::size<T>()), last(0) {
+  };
+
+  explicit myVector(const std::string &file_name) : myVector() {
+    this->file_name = file_name;
+  }
+
+  ~myVector() {
+    file.close();
+  }
+
+  void initialise(std::string FN = "", bool clear = false) {
+    if (FN != "") file_name = FN;
+    file.open(file_name, std::ios::in | std::ios::out | std::ios::binary);
+
+    if (!file || clear) {
+      file.clear();
+      file.open(file_name, std::ios::out | std::ios::binary);
+      file.close();
+      file.open(file_name, std::ios::in | std::ios::out | std::ios::binary);
+    }
+    int tmp = 0;
+    for (int i = 0; i < info_len; ++i)
+      file.write(reinterpret_cast<char *>(&tmp), sizeof(int));
+    file.close();
+    file.open(file_name, std::ios::in | std::ios::out | std::ios::binary);
+    file.read(reinterpret_cast<char *>(&last), sizeof(int));
+  }
+
+  int size() {
+    return last;
+  }
+
+  void get_info(int &tmp, int n) {
+    if (n > info_len) return;
+    /* your code here */
+    file.seekg((n - 1) * sizeof(int), std::ios::beg);
+    file.read(reinterpret_cast<char *>(&tmp), sizeof(int));
+  }
+
+  //将tmp写入第n个int的位置，1_base
+  void write_info(int tmp, int n) {
+    if (n > info_len) return;
+    /* your code here */
+    file.seekp((n - 1) * sizeof(int), std::ios::beg);
+    file.write(reinterpret_cast<char *>(&tmp), sizeof(int));
+  }
+
+
+  //index 是1-based
+  int write(T &t) {
+    /* your code here */
+    file.seekp(info_len * sizeof(int) + last * sizeofT, std::ios::beg);
+    ::write(t, file);
+    return ++last;
+  }
+
+  //用t的值更新位置索引index对应的对象，保证调用的index都是由write函数产生
+  void update(T &t, const int index) {
+    /* your code here */
+    file.seekp(info_len * sizeof(int) + (index - 1) * sizeofT, std::ios::beg);
+    ::write(t, file);
+  }
+
+  //读出位置索引index对应的T对象的值并赋值给t，保证调用的index都是由write函数产生
+  T read(const int index) {
+    /* your code here */
+    T t;
+    file.seekg(info_len * sizeof(int) + (index - 1) * sizeofT, std::ios::beg);
+    ::read(t, file);
+    return t;
+  }
+
+  std::vector<T> read_all() {
+    std::vector<T> tmp;
+    for (int i = 1; i <= size(); ++i) {
+      tmp.push_back(read(i));
+    }
+    return tmp;
   }
 };
 
