@@ -126,6 +126,17 @@ public:
     return login_stack.back().privilege;
   }
 
+  void select(int id) {
+    login_stack.back().selected=id;
+  }
+  int get_select() const {
+    int id=login_stack.back().selected;
+    if(id==0) {
+      throw invalid_command("haven't select any book");
+    }
+    return id;
+  }
+
 };
 
 template<>
@@ -147,6 +158,9 @@ public:
     IOType<std::string>::read(value.user_id, in);
     IOType<unsigned long long>::read(value.password, in);
   }
+
+  static LoginStatus::User ZERO(){throw NotComparable("User");}
+  static LoginStatus::User START(){throw NotComparable("User");}
 };
 
 #endif //USER_H
