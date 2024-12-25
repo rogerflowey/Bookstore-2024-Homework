@@ -166,6 +166,12 @@ protected:
       if (data.size() == 0) {
         throw std::runtime_error("writing no data");
       }
+      if(start!=father->ZERO_KEY) {
+        if(!father->index.erase(start)) {
+          std::cerr<<"unable to erase block"<<std::endl;
+        }
+
+      }
       Key tmp = data.back().first;
       for (auto it = data.begin(); it != data.end(); ++it) {
         if (it->first < tmp) {
@@ -245,6 +251,7 @@ protected:
     index_file.open(index_name, std::ios::in | std::ios::out | std::ios::binary);
     size_t index_size = 0;
     if (!index_file || clear) {
+      //std::cerr<<"WARNING: Cannot find file:"<<index_name<<std::endl;
       index_file.clear();
       index_file.open(index_name, std::ios::out | std::ios::binary);
       index_file.close();
@@ -260,6 +267,7 @@ protected:
     } else {
       index_file.seekg(0, std::ios::beg);
       index_file.read(reinterpret_cast<char *>(&index_size), sizeof(size_t));
+
       if (index_file.fail()) {
         throw std::runtime_error("read file failed, please clear all previous ones");
       }
@@ -317,7 +325,7 @@ protected:
   }
 
 
-  void spilt(Block &temp_block) {
+  void spilt(Block temp_block) {
     std::vector<std::pair<Key, Value> > tmp_v = temp_block.read_block();
     std::sort(tmp_v.begin(), tmp_v.end(), cmp<Key, Value>);
     int mid = tmp_v.size() / 2;
@@ -327,7 +335,7 @@ protected:
     this->new_block(second_half);
   }
 
-  void merge(Block &temp_block) {
+  void merge(Block temp_block) {
     auto next = index.upper_bound(temp_block.start);
     if (next == index.end()) {
       return;
@@ -351,6 +359,7 @@ public:
     file.open(file_name, std::ios::in | std::ios::out | std::ios::binary);
 
     if (!file || clear) {
+      //std::cerr<<"WARNING: Cannot find file:"<<FN<<std::endl;
       return_val = true;
       file.clear();
       file.open(file_name, std::ios::out | std::ios::binary);
@@ -483,6 +492,7 @@ public:
   }
 
   ~myVector() {
+    write_info(last,1);
     file.close();
   }
 
@@ -495,13 +505,11 @@ public:
       file.open(file_name, std::ios::out | std::ios::binary);
       file.close();
       file.open(file_name, std::ios::in | std::ios::out | std::ios::binary);
+      last=0;
     }
-    int tmp = 0;
-    for (int i = 0; i < info_len; ++i)
-      file.write(reinterpret_cast<char *>(&tmp), sizeof(int));
-    file.close();
-    file.open(file_name, std::ios::in | std::ios::out | std::ios::binary);
-    file.read(reinterpret_cast<char *>(&last), sizeof(int));
+    else {
+      get_info(last,1);
+    }
   }
 
   int size() {
