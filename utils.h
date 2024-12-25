@@ -100,13 +100,18 @@ public:
         }
       }
     }
-    tokens.push_back(tmp);
+    if(tmp!="") {
+      tokens.push_back(tmp);
+    }
   }
 
   std::string next() {
     std::string tmp = tokens.front();
     tokens.pop_front();
     return tmp;
+  }
+  void put(std::string &s) {
+    tokens.push_front(s);
   }
 
   int size() {

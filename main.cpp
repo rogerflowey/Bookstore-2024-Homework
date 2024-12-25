@@ -4,12 +4,21 @@
 #include "log.h"
 
 
-bool TEST=true;
+bool TEST=false;
 
 int main() {
+
+
+  //freopen("../bookstore-testcases/advanced/testcase3/1.in","r",stdin);
+  //freopen("my.out","w",stdout);
+
+  int line_num=0;
   LoginStatus login_status;
   BookData book_data;
+  FinanceLog finance_log;
   while (std::cin) {
+    ++line_num;
+    std::cout.flush();
     try {
       std::string line;
       getline(std::cin,line);
@@ -19,6 +28,7 @@ int main() {
       }
       switch (hash(p.next())) {
         case hash("su"): {
+
           if(p.size()==2) {
             std::string user_id=p.next();
             std::string password=p.next();
@@ -37,6 +47,9 @@ int main() {
           throw invalid_command();
         }
         case hash("logout"): {
+          if(login_status.get_privilege()<1) {
+            throw invalid_command();
+          }
           login_status.logout();
           break;
         }
@@ -51,6 +64,9 @@ int main() {
           throw invalid_command();
         }
         case hash("passwd"): {
+          if(login_status.get_privilege()<1) {
+            throw invalid_command();
+          }
           if(p.size()==3) {
             std::string user_id=p.next(),current_password=p.next(),new_password=p.next();
             if(is_user_str(user_id)&&is_user_str(current_password)&&is_user_str(new_password)) {
@@ -68,6 +84,9 @@ int main() {
           throw invalid_command();
         }
         case hash("useradd"): {
+          if(login_status.get_privilege()<3) {
+            throw invalid_command();
+          }
           if(p.size()==4) {
             std::string user_id=p.next();
             std::string password=p.next();
@@ -81,6 +100,9 @@ int main() {
           throw invalid_command();
         }
         case hash("delete"): {
+          if(login_status.get_privilege()<7) {
+            throw invalid_command();
+          }
           if(p.size()==1) {
             std::string user_id=p.next();
             if(is_user_str(user_id)) {
@@ -91,6 +113,33 @@ int main() {
           throw invalid_command();
         }
         case hash("show"): {
+          if(p.size()!=0) {
+            std::string tmp=p.next();
+            if(tmp=="finance") {
+              if(login_status.get_privilege()<7) {
+                throw invalid_command();
+              }
+              if(p.size()==0) {
+                finance_log.show_finance(-1);
+                break;
+              }
+              if(p.size()==1) {
+                std::string n=p.next();
+                if(!is_valid_int(n)) {
+                  throw invalid_command();
+                }
+                finance_log.show_finance(strToInt(n));
+                break;
+              }
+              throw invalid_command();
+            } else {
+              p.put(tmp);
+            }
+          }
+
+          if(login_status.get_privilege()<1) {
+            throw invalid_command();
+          }
           if(p.size()==0) {
             book_data.show({"",""});
             break;
@@ -112,18 +161,24 @@ int main() {
           break;
         }
         case hash("buy"): {
+          if(login_status.get_privilege()<1) {
+            throw invalid_command();
+          }
           if(p.size()==2) {
             auto ISBN=p.next();
             auto quantity=p.next();
             if(!is_valid_ISBN(ISBN)||!is_valid_int(quantity)) {
               throw invalid_command();
             }
-            book_data.buy(ISBN,strToInt(quantity));
+            book_data.buy(ISBN,strToInt(quantity),finance_log);
             break;
           }
           throw invalid_command();
         }
         case hash("select"): {
+          if(login_status.get_privilege()<3) {
+            throw invalid_command();
+          }
           if(p.size()==1) {
             auto ISBN=p.next();
             if(!is_valid_ISBN(ISBN)) {
@@ -135,6 +190,9 @@ int main() {
           throw invalid_command();
         }
         case hash("modify"): {
+          if(login_status.get_privilege()<3) {
+            throw invalid_command();
+          }
           BookData::Book tmp_book;
           while (p.size()) {
             auto param=parseParam(p.next());
@@ -159,21 +217,26 @@ int main() {
           break;
         }
         case hash("import"): {
+          if(login_status.get_privilege()<3) {
+            throw invalid_command();
+          }
           if(p.size()==2) {
             auto quantity=p.next();
             auto total_cost=p.next();
             if(!is_valid_int(quantity)||!is_valid_price(total_cost)) {
               throw invalid_command();
             }
-            book_data.import(strToInt(quantity),strToDec(total_cost),login_status);
+            book_data.import(strToInt(quantity),strToDec(total_cost),login_status,finance_log);
             break;
           }
           throw invalid_command();
         }
+
         case hash("quit"):{
         }
         case hash("exit"): {
-          exit(0);
+          //login_status.user_data.find_block(hash("T35U0B7Kwv96WaJWafOkUSJOQ_T"));
+          return 0;
         }
         default: {
           throw invalid_command();
@@ -186,4 +249,5 @@ int main() {
       std::cout<<"Invalid"<<std::endl;
     }
   }
+  return 0;
 }

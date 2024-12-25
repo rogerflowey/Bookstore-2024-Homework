@@ -2,6 +2,7 @@
 #define BOOK_DATA_H
 #include <iomanip>
 
+#include "log.h"
 #include "utils.h"
 #include "user.h"
 
@@ -51,7 +52,7 @@ public:
     login_status.select(uid);
   }
 
-  void buy(const std::string &ISBN,int n) {
+  void buy(const std::string &ISBN,int n,FinanceLog &finance_log) {
     auto tmp=ISBN_index.find(hash(ISBN));
     if(!tmp) {
       throw invalid_command();
@@ -66,10 +67,12 @@ public:
     }
     tmp_book.storage-=n;
     money_output(tmp_book.price*n);
+    std::cout<<std::endl;
+    finance_log.push_back(tmp_book.price*n);
     books.update(tmp_book,uid);
   }
 
-  void import(int quantity,unsigned long long total_cost, const LoginStatus &login_status) {
+  void import(int quantity,unsigned long long total_cost, const LoginStatus &login_status,FinanceLog &finance_log) {
     int uid=login_status.get_select();
     if(quantity<=0) {
       throw invalid_command();
@@ -79,6 +82,7 @@ public:
     }
     Book tmp_book=books.read(uid);
     tmp_book.storage+=quantity;
+    finance_log.push_back(-total_cost);
     books.update(tmp_book,uid);
   }
 
@@ -91,6 +95,9 @@ public:
       }
       if(!ISBN_index.erase(hash(tmp_book.ISBN))) {
         throw std::runtime_error("Data corrupted,cannot find ISBN");
+      }
+      if(ISBN_index.find(hash(target.ISBN))) {
+        throw invalid_command();
       }
       tmp_book.ISBN=target.ISBN;
       ISBN_index.insert({hash(tmp_book.ISBN),uid});

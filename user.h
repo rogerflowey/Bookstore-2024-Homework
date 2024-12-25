@@ -55,9 +55,6 @@ public:
   }
 
   void logout() {
-    if(get_privilege()==0) {
-      throw invalid_command();
-    }
     if(login_stack.empty()) {
       throw invalid_command();
     }
@@ -73,9 +70,6 @@ public:
   }
 
   void passwd(const std::string& user_id,const std::string& new_passwd,const std::string& passwd="") {
-    if(get_privilege()==0) {
-      throw invalid_command();
-    }
     auto tmp=user_data.find(hash(user_id));
     if(!tmp) {
       throw invalid_command();
@@ -93,7 +87,9 @@ public:
     user_data.erase(hash(tmp_user.user_id));
     tmp_user.password=hash(new_passwd);
     user_data.insert({hash(tmp_user.user_id),tmp_user});
-
+    if(!user_data.find(hash(tmp_user.user_id))) {
+      throw std::runtime_error("password update failed");
+    }
   }
 
   void useradd(const std::string& user_id,const std::string& password, const int privilege, const std::string &username) {
