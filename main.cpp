@@ -2,9 +2,9 @@
 #include "user.h"
 #include "book_data.h"
 #include "log.h"
+#include "command.h"
 
-
-bool TEST=false;
+bool TEST=true;
 
 int main() {
 
@@ -16,11 +16,14 @@ int main() {
   LoginStatus login_status;
   BookData book_data;
   FinanceLog finance_log;
+  ActionLog action_log;
   while (std::cin) {
     ++line_num;
     std::cout.flush();
+    bool success=true;
+    Line temp;
+    std::string line;
     try {
-      std::string line;
       getline(std::cin,line);
       Parser p(line);
       if(p.size()==0) {
@@ -161,6 +164,7 @@ int main() {
           break;
         }
         case hash("buy"): {
+          temp.is_finance=true;
           if(login_status.get_privilege()<1) {
             throw invalid_command();
           }
@@ -217,6 +221,7 @@ int main() {
           break;
         }
         case hash("import"): {
+          temp.is_finance=true;
           if(login_status.get_privilege()<3) {
             throw invalid_command();
           }
@@ -232,21 +237,52 @@ int main() {
           throw invalid_command();
         }
 
+        case hash("report"):{
+          if(login_status.get_privilege()<7) {
+            throw invalid_command();
+          }
+          auto second=p.next();
+          if(second=="finance") {
+            action_log.report_finance(finance_log);
+            break;
+          } else if(second=="employee") {
+            action_log.report_employee();
+            break;
+          }
+        }
+        case hash("log"): {
+          if(login_status.get_privilege()<7) {
+            throw invalid_command();
+          }
+          action_log.log();
+          break;
+        }
+
         case hash("quit"):{
         }
         case hash("exit"): {
           //login_status.user_data.find_block(hash("T35U0B7Kwv96WaJWafOkUSJOQ_T"));
           return 0;
         }
+
+
+
         default: {
           throw invalid_command();
         }
       }
-
-
     }
     catch (invalid_command &e) {
       std::cout<<"Invalid"<<std::endl;
+      success=false;
+    }
+    if(success) {
+      temp.user=login_status.get_user_id();
+      temp.line.content=line;
+      if(login_status.get_privilege()==3) {
+        temp.is_employee=true;
+      }
+      action_log.record(temp);
     }
   }
   return 0;

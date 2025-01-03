@@ -132,6 +132,12 @@ public:
     }
     return id;
   }
+  std::string get_user_id() {
+    if(login_stack.size()!=0) {
+      return login_stack.back().user_id;
+    }
+    return "visitor";
+  }
 
 };
 
